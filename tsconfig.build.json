@@ -1,0 +1,9 @@
+{
+  // The SDK itself must stay runtime-agnostic (Node, Deno, Bun, edge workers):
+  // no Node.js types are available here.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": ["src"]
+}

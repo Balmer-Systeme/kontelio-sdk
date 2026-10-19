@@ -1,0 +1,32 @@
+name: Bug report
+description: Something in the SDK does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please never paste API keys, customer data or invoice contents into an issue.
+  - type: input
+    id: version
+    attributes:
+      label: SDK version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and version
+      placeholder: "Node.js 22.11 / Bun 1.2 / Deno 2.1 / Cloudflare Workers"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the `requestId` from the error if available.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      render: ts

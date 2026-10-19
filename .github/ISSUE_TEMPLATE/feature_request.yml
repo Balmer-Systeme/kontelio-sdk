@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an API capability or SDK improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What are you integrating with Kontelio, and what is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      render: ts

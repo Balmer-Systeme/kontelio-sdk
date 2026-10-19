@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: API access and integration support
+    url: https://kontelio.de/
+    about: Request API access or talk to us about your integration.
+  - name: Security vulnerability
+    url: https://github.com/Balmer-Systeme/kontelio-sdk/security/policy
+    about: Please report security issues privately.

@@ -1,0 +1,81 @@
+{
+  "name": "@kontelio/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript/JavaScript SDK for the Kontelio API: create invoices, e-invoices (XRechnung, ZUGFeRD) and customers from any application. German invoicing and bookkeeping API for ERP, CRM, SaaS and e-commerce integrations.",
+  "keywords": [
+    "kontelio",
+    "invoice",
+    "invoicing",
+    "invoice-api",
+    "rechnung",
+    "rechnungssoftware",
+    "e-rechnung",
+    "xrechnung",
+    "zugferd",
+    "en16931",
+    "e-invoicing",
+    "buchhaltung",
+    "bookkeeping",
+    "accounting",
+    "germany",
+    "umsatzsteuer",
+    "vat",
+    "sdk",
+    "api-client"
+  ],
+  "homepage": "https://kontelio.de/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Balmer-Systeme/kontelio-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Balmer-Systeme/kontelio-sdk/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Balmer Systeme",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "prepublishOnly": "npm run check",
+    "lint:openapi": "npx -y @redocly/cli@1.25.0 lint openapi/openapi.yaml"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

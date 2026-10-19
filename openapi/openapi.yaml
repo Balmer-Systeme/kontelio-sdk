@@ -1,0 +1,743 @@
+openapi: 3.1.0
+info:
+  title: Kontelio API
+  version: "2026-10-01"
+  summary: Invoicing and e-invoicing API for German bookkeeping.
+  description: |
+    The Kontelio API lets external systems (ERP, CRM, SaaS, e-commerce, booking
+    platforms) create customers and invoices in [Kontelio](https://kontelio.de/),
+    including German e-invoices (XRechnung, ZUGFeRD / EN 16931).
+
+    **Conventions**
+
+    - Authentication: `Authorization: Bearer <API key>`. Test keys start with
+      `kt_test_`, live keys with `kt_live_`.
+    - Versioning: send `Kontelio-Version: 2026-10-01` to pin the API version.
+    - Idempotency: every `POST` accepts an `Idempotency-Key` header. Repeating a
+      request with the same key within 24 h returns the original response.
+    - Amounts are decimal strings in responses (`"1190.00"`); requests accept
+      numbers or decimal strings.
+    - Field names use `camelCase`. Dates are ISO 8601.
+    - Lists are cursor-paginated (`limit`, `cursor` → `hasMore`, `nextCursor`).
+  contact:
+    name: Kontelio
+    url: https://kontelio.de/
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://api.kontelio.de/v1
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Invoices
+    description: Create, issue, send, cancel and download invoices and e-invoices (XRechnung, ZUGFeRD).
+  - name: Customers
+    description: Manage the customers (Debitoren) invoices are addressed to.
+paths:
+  /invoices:
+    get:
+      tags: [Invoices]
+      operationId: listInvoices
+      summary: List invoices
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/InvoiceStatus" }
+          style: form
+          explode: true
+        - { name: customerId, in: query, schema: { type: string } }
+        - { name: externalReference, in: query, schema: { type: string } }
+        - { name: issueDateFrom, in: query, schema: { type: string, format: date } }
+        - { name: issueDateTo, in: query, schema: { type: string, format: date } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of invoices.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoiceList" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Invoices]
+      operationId: createInvoice
+      summary: Create an invoice
+      description: Creates a draft invoice, or an issued invoice when `issue` is `true`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoiceCreate" }
+      responses:
+        "201":
+          description: The created invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Invoices]
+      operationId: retrieveInvoice
+      summary: Retrieve an invoice
+      responses:
+        "200":
+          description: The invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Invoices]
+      operationId: updateInvoice
+      summary: Update a draft invoice
+      description: Only drafts can be changed. Issued invoices return `409 invoice_not_editable`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoiceUpdate" }
+      responses:
+        "200":
+          description: The updated invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Invoices]
+      operationId: deleteInvoice
+      summary: Delete a draft invoice
+      responses:
+        "200":
+          description: Deletion confirmation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletedObject" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/issue:
+    post:
+      tags: [Invoices]
+      operationId: issueInvoice
+      summary: Issue (finalize) a draft invoice
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: The issued invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/send:
+    post:
+      tags: [Invoices]
+      operationId: sendInvoice
+      summary: Send an invoice by email
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoiceSend" }
+      responses:
+        "200":
+          description: The sent invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/cancel:
+    post:
+      tags: [Invoices]
+      operationId: cancelInvoice
+      summary: Cancel an issued invoice (Stornorechnung)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoiceCancel" }
+      responses:
+        "200":
+          description: The cancelled invoice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/payments:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Invoices]
+      operationId: listInvoicePayments
+      summary: List payments of an invoice
+      responses:
+        "200":
+          description: Payments recorded for the invoice.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ListEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Payment" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Invoices]
+      operationId: recordInvoicePayment
+      summary: Record a payment
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentCreate" }
+      responses:
+        "201":
+          description: The recorded payment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/pdf:
+    get:
+      tags: [Invoices]
+      operationId: downloadInvoicePdf
+      summary: Download the invoice PDF
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: PDF (PDF/A-3 with embedded XML for ZUGFeRD).
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /invoices/{id}/e-invoice:
+    get:
+      tags: [Invoices]
+      operationId: downloadEInvoice
+      summary: Download the structured e-invoice XML
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [zugferd, xrechnung_cii, xrechnung_ubl]
+      responses:
+        "200":
+          description: EN 16931 compliant XML.
+          content:
+            application/xml:
+              schema: { type: string }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List customers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - { name: search, in: query, schema: { type: string } }
+        - { name: externalReference, in: query, schema: { type: string } }
+        - { name: email, in: query, schema: { type: string, format: email } }
+      responses:
+        "200":
+          description: A page of customers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerList" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Create a customer
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCreate" }
+      responses:
+        "201":
+          description: The created customer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+  /customers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Customers]
+      operationId: retrieveCustomer
+      summary: Retrieve a customer
+      responses:
+        "200":
+          description: The customer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Customers]
+      operationId: updateCustomer
+      summary: Update a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCreate" }
+      responses:
+        "200":
+          description: The updated customer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Customers]
+      operationId: deleteCustomer
+      summary: Delete a customer
+      responses:
+        "200":
+          description: Deletion confirmation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletedObject" }
+        "4XX": { $ref: "#/components/responses/Error" }
+        "5XX": { $ref: "#/components/responses/Error" }
+webhooks:
+  invoiceEvent:
+    post:
+      operationId: receiveEvent
+      summary: Invoice and customer events
+      description: |
+        Sent to your endpoint for `invoice.*` and `customer.*` events. Verify the
+        `Kontelio-Signature` header (`t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">`).
+      parameters:
+        - name: Kontelio-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Event" }
+      responses:
+        "2XX":
+          description: Event received.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key created in Kontelio under Settings → Integrations → API keys.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema: { type: string, maxLength: 255 }
+  responses:
+    Error:
+      description: Error response.
+      headers:
+        X-Request-Id:
+          schema: { type: string }
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Decimal:
+      oneOf:
+        - type: number
+        - type: string
+          pattern: "^-?\\d+(\\.\\d+)?$"
+    Money:
+      type: string
+      pattern: "^-?\\d+\\.\\d{2}$"
+      examples: ["1190.00"]
+    Metadata:
+      type: object
+      additionalProperties: { type: string }
+      maxProperties: 50
+    Address:
+      type: object
+      required: [line1, postalCode, city, country]
+      properties:
+        line1: { type: string, maxLength: 255 }
+        line2: { type: [string, "null"], maxLength: 255 }
+        postalCode: { type: string, maxLength: 20 }
+        city: { type: string, maxLength: 100 }
+        country: { type: string, pattern: "^[A-Z]{2}$" }
+        state: { type: [string, "null"] }
+    InvoiceStatus:
+      type: string
+      enum: [draft, issued, partially_paid, paid, overdue, cancelled, credited]
+    EInvoiceFormat:
+      type: string
+      enum: [pdf, zugferd, xrechnung_cii, xrechnung_ubl]
+    DocumentLanguage:
+      type: string
+      enum: [de, en, de_en]
+    PriceMode:
+      type: string
+      enum: [net, gross]
+    TaxTreatment:
+      type: string
+      enum: [standard, small_business, reverse_charge, intra_community_supply, export, exempt, not_taxable_in_germany]
+    ServicePeriod:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+    ListEnvelope:
+      type: object
+      required: [object, data, hasMore, nextCursor]
+      properties:
+        object: { const: list }
+        data: { type: array, items: {} }
+        hasMore: { type: boolean }
+        nextCursor: { type: [string, "null"] }
+    DeletedObject:
+      type: object
+      required: [id, object, deleted]
+      properties:
+        id: { type: string }
+        object: { type: string }
+        deleted: { const: true }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, code, message]
+          properties:
+            type:
+              type: string
+              enum: [authentication_error, permission_error, not_found, conflict, validation_error, rate_limit_error, api_error]
+            code: { type: string, examples: [duplicate_external_reference, invoice_not_editable] }
+            message: { type: string }
+            param: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, code, message]
+                properties:
+                  field: { type: string, examples: ["lines[0].unitPrice"] }
+                  code: { type: string }
+                  message: { type: string }
+    CustomerCreate:
+      type: object
+      required: [name]
+      properties:
+        type: { type: string, enum: [company, individual, public_authority], default: company }
+        name: { type: string, maxLength: 255 }
+        email: { type: string, format: email }
+        phone: { type: string }
+        vatId: { type: string, description: EU VAT ID (USt-IdNr.) }
+        taxNumber: { type: string, description: German Steuernummer }
+        leitwegId: { type: string, description: Leitweg-ID for XRechnung (B2G) }
+        billingAddress: { $ref: "#/components/schemas/Address" }
+        language: { $ref: "#/components/schemas/DocumentLanguage" }
+        paymentTermsDays: { type: integer, minimum: 0, maximum: 365 }
+        eInvoiceFormat: { $ref: "#/components/schemas/EInvoiceFormat" }
+        externalReference: { type: string, maxLength: 100 }
+        metadata: { $ref: "#/components/schemas/Metadata" }
+    Customer:
+      allOf:
+        - $ref: "#/components/schemas/CustomerCreate"
+        - type: object
+          required: [id, object, number, createdAt, updatedAt]
+          properties:
+            id: { type: string }
+            object: { const: customer }
+            number: { type: string, examples: [K-10023] }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    CustomerList:
+      allOf:
+        - $ref: "#/components/schemas/ListEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Customer" }
+    InvoiceLineCreate:
+      type: object
+      required: [name, unitPrice]
+      properties:
+        name: { type: string, maxLength: 255 }
+        description: { type: string, maxLength: 5000 }
+        sku: { type: string, maxLength: 60 }
+        quantity: { $ref: "#/components/schemas/Decimal" }
+        unit: { type: string, description: UN/ECE Rec. 20 unit code, default: C62 }
+        unitPrice: { $ref: "#/components/schemas/Decimal" }
+        vatRate: { $ref: "#/components/schemas/Decimal" }
+        taxTreatment: { $ref: "#/components/schemas/TaxTreatment" }
+        discountPercent: { $ref: "#/components/schemas/Decimal" }
+        discountAmount: { $ref: "#/components/schemas/Decimal" }
+        servicePeriod: { $ref: "#/components/schemas/ServicePeriod" }
+        externalReference: { type: string, maxLength: 100 }
+    InvoiceLine:
+      type: object
+      properties:
+        id: { type: string }
+        position: { type: integer }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        sku: { type: [string, "null"] }
+        quantity: { type: string }
+        unit: { type: string }
+        unitPrice: { type: string }
+        vatRate: { type: string }
+        taxTreatment: { $ref: "#/components/schemas/TaxTreatment" }
+        discountPercent: { type: [string, "null"] }
+        discountAmount: { type: [string, "null"] }
+        netAmount: { $ref: "#/components/schemas/Money" }
+        vatAmount: { $ref: "#/components/schemas/Money" }
+        grossAmount: { $ref: "#/components/schemas/Money" }
+        servicePeriod:
+          oneOf:
+            - $ref: "#/components/schemas/ServicePeriod"
+            - type: "null"
+        externalReference: { type: [string, "null"] }
+    InvoiceCreate:
+      type: object
+      required: [customer, lines]
+      properties:
+        customer:
+          oneOf:
+            - type: object
+              required: [id]
+              properties: { id: { type: string } }
+            - type: object
+              required: [externalReference]
+              properties: { externalReference: { type: string } }
+            - $ref: "#/components/schemas/CustomerCreate"
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: "#/components/schemas/InvoiceLineCreate" }
+        externalReference: { type: string, maxLength: 100 }
+        issueDate: { type: string, format: date }
+        serviceDate: { type: string, format: date }
+        servicePeriod: { $ref: "#/components/schemas/ServicePeriod" }
+        dueDate: { type: string, format: date }
+        paymentTermsDays: { type: integer, minimum: 0, maximum: 365 }
+        currency: { type: string, pattern: "^[A-Z]{3}$", default: EUR }
+        language: { $ref: "#/components/schemas/DocumentLanguage" }
+        priceMode: { $ref: "#/components/schemas/PriceMode" }
+        taxTreatment: { $ref: "#/components/schemas/TaxTreatment" }
+        eInvoiceFormat: { $ref: "#/components/schemas/EInvoiceFormat" }
+        documentDiscountPercent: { $ref: "#/components/schemas/Decimal" }
+        documentDiscountAmount: { $ref: "#/components/schemas/Decimal" }
+        buyerReference: { type: string, maxLength: 100 }
+        orderReference: { type: string, maxLength: 100 }
+        contractReference: { type: string, maxLength: 100 }
+        projectReference: { type: string, maxLength: 100 }
+        introText: { type: string, maxLength: 5000 }
+        closingText: { type: string, maxLength: 5000 }
+        paymentTermsText: { type: string, maxLength: 1000 }
+        internalNotes: { type: string, maxLength: 5000 }
+        issue: { type: boolean, default: false }
+        metadata: { $ref: "#/components/schemas/Metadata" }
+    InvoiceUpdate:
+      description: Same fields as InvoiceCreate, all optional, without `issue`.
+      type: object
+      properties: {}
+      additionalProperties: true
+    Invoice:
+      type: object
+      required: [id, object, status, currency, lines, totals, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        object: { const: invoice }
+        number: { type: [string, "null"], examples: [RE-2026-0001] }
+        status: { $ref: "#/components/schemas/InvoiceStatus" }
+        customer:
+          type: object
+          properties:
+            id: { type: string }
+            number: { type: string }
+            name: { type: string }
+            vatId: { type: [string, "null"] }
+            billingAddress:
+              oneOf:
+                - $ref: "#/components/schemas/Address"
+                - type: "null"
+        issueDate: { type: [string, "null"], format: date }
+        serviceDate: { type: [string, "null"], format: date }
+        servicePeriod:
+          oneOf:
+            - $ref: "#/components/schemas/ServicePeriod"
+            - type: "null"
+        dueDate: { type: [string, "null"], format: date }
+        currency: { type: string }
+        language: { $ref: "#/components/schemas/DocumentLanguage" }
+        priceMode: { $ref: "#/components/schemas/PriceMode" }
+        taxTreatment: { $ref: "#/components/schemas/TaxTreatment" }
+        eInvoiceFormat: { $ref: "#/components/schemas/EInvoiceFormat" }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/InvoiceLine" }
+        totals:
+          type: object
+          properties:
+            netAmount: { $ref: "#/components/schemas/Money" }
+            vatAmount: { $ref: "#/components/schemas/Money" }
+            grossAmount: { $ref: "#/components/schemas/Money" }
+            amountPaid: { $ref: "#/components/schemas/Money" }
+            amountDue: { $ref: "#/components/schemas/Money" }
+            vatBreakdown:
+              type: array
+              items:
+                type: object
+                properties:
+                  vatRate: { type: string }
+                  taxTreatment: { $ref: "#/components/schemas/TaxTreatment" }
+                  netAmount: { $ref: "#/components/schemas/Money" }
+                  vatAmount: { $ref: "#/components/schemas/Money" }
+        buyerReference: { type: [string, "null"] }
+        orderReference: { type: [string, "null"] }
+        contractReference: { type: [string, "null"] }
+        projectReference: { type: [string, "null"] }
+        introText: { type: [string, "null"] }
+        closingText: { type: [string, "null"] }
+        paymentTermsText: { type: [string, "null"] }
+        externalReference: { type: [string, "null"] }
+        pdfUrl: { type: [string, "null"], format: uri }
+        hostedUrl: { type: [string, "null"], format: uri }
+        issuedAt: { type: [string, "null"], format: date-time }
+        sentAt: { type: [string, "null"], format: date-time }
+        paidAt: { type: [string, "null"], format: date-time }
+        cancelledAt: { type: [string, "null"], format: date-time }
+        metadata: { $ref: "#/components/schemas/Metadata" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InvoiceList:
+      allOf:
+        - $ref: "#/components/schemas/ListEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Invoice" }
+    InvoiceSend:
+      type: object
+      properties:
+        to: { type: array, items: { type: string, format: email } }
+        cc: { type: array, items: { type: string, format: email } }
+        bcc: { type: array, items: { type: string, format: email } }
+        subject: { type: string }
+        message: { type: string }
+        attachEInvoice: { type: boolean, default: true }
+    InvoiceCancel:
+      type: object
+      properties:
+        reason: { type: string }
+        cancellationDate: { type: string, format: date }
+    PaymentCreate:
+      type: object
+      required: [amount]
+      properties:
+        amount: { $ref: "#/components/schemas/Decimal" }
+        date: { type: string, format: date }
+        method: { type: string, enum: [bank_transfer, direct_debit, card, paypal, cash, other] }
+        reference: { type: string }
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+        object: { const: payment }
+        invoiceId: { type: string }
+        amount: { $ref: "#/components/schemas/Money" }
+        currency: { type: string }
+        date: { type: string, format: date }
+        method: { type: string }
+        reference: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+    Event:
+      type: object
+      required: [id, object, type, createdAt, livemode, data]
+      properties:
+        id: { type: string }
+        object: { const: event }
+        type:
+          type: string
+          enum:
+            - invoice.created
+            - invoice.updated
+            - invoice.issued
+            - invoice.sent
+            - invoice.partially_paid
+            - invoice.paid
+            - invoice.overdue
+            - invoice.cancelled
+            - customer.created
+            - customer.updated
+            - customer.deleted
+        createdAt: { type: string, format: date-time }
+        livemode: { type: boolean }
+        data:
+          type: object
+          properties:
+            object:
+              oneOf:
+                - $ref: "#/components/schemas/Invoice"
+                - $ref: "#/components/schemas/Customer"
